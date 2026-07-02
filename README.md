@@ -45,7 +45,7 @@ Manually checking thousands of rows is tedious and error‑prone.
 ### 1. Install Dependencies
 Make sure your Python version is ≥ 3.7, then run:
 ```bash
-pip install pandas numpy pypinyin tabulate tqdm
+pip3 install pandas numpy pypinyin tabulate tqdm
 ```
 > `difflib` is built‑in, so no extra installation is needed.
 
