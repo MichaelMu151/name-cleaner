@@ -42,12 +42,12 @@ class AdvancedNameCleaner:
     Parameters
     ----------
     aux_columns : list, optional
-        辅助列名称列表，用于在决策时展示更多上下文信息（如单位、年份等）
-    threshold : float, default=0.85
+        辅助列名称列表，用于在决策时展示更多上下文信息（如w_name, year, post1, distname20等）
+    threshold : float, default=0.3
         拼音相似度阈值，高于此值视为疑似同音变体
     """
 
-    def __init__(self, aux_columns=None, threshold=0.85):
+    def __init__(self, aux_columns=None, threshold=0.3):
         self.aux_columns = aux_columns if aux_columns else []
         self.threshold = threshold
         self.name_info_cache = {}
