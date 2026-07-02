@@ -89,7 +89,7 @@ When you run the script, an **interactive command‑line interface** will appear
 
 ---
 
-## 🖥️ Interactive Interface Walkthrough
+## Interactive Interface Walkthrough
 
 The tool automatically finds suspected groups and asks you to decide on each one. Example screen:
 
@@ -112,12 +112,12 @@ The tool automatically finds suspected groups and asks you to decide on each one
 ```
 
 ### What You Can Enter:
-- A number ID (e.g., `1`) → all names in the group are changed to the one with that ID.
-- `pass` → treat them as different persons; keep everything unchanged and move on.
-- `custom` → define your own mapping, e.g., `2>1;3>1` means change ID 2 and ID 3 to ID 1.
-- `stop` → stop immediately; changes made so far are applied, remaining groups are left untouched.
+- **A number ID** (e.g., `1`) → all names in the group are changed to the one with that ID.
+- **`pass`** → treat them as different persons; keep everything unchanged and move on.
+- **`custom`** → define your own mapping, e.g., `2>1;3>1` means change ID 2 and ID 3 to ID 1.
+- **`stop`** → stop immediately; changes made so far are applied, remaining groups are left untouched.
 
-> 💡 Tip: Auxiliary columns (year, company) help you judge – if two names appear in different years or different companies, they are likely different people, so you may want to `pass`.
+> **Tip**: Auxiliary columns (year, company) help you judge – if two names appear in different years or different companies, they are likely different people, so you may want to `pass`.
 
 ---
 
@@ -132,8 +132,8 @@ When creating the `AdvancedNameCleaner` object, two main parameters are availabl
 
 ### How to Adjust the Threshold?
 - Start with the default 0.85 and observe the proposed groups.
-- If you see clearly different people grouped together → increase the threshold (e.g., to 0.90).
-- If you notice variants of the same person are not grouped → decrease the threshold (e.g., to 0.80).
+- If you see **clearly different people** grouped together → increase the threshold (e.g., to 0.90).
+- If you notice **variants of the same person** are not grouped → decrease the threshold (e.g., to 0.80).
 - It’s recommended to adjust in steps of 0.03–0.05 until you find the best balance for your data.
 
 ---
@@ -168,21 +168,21 @@ Follow the interactive prompts to quickly understand how the tool works.
 
 ---
 
-## Q&A ====
+## Q&A 
 
-Q: Does the tool support English names or numbers?
+**Q: Does the tool support English names or numbers?**  
 A: It is primarily designed for Chinese names. Non‑Chinese characters are ignored, which may affect similarity – it is recommended to pre‑process such cases.
 
-Q: Can I fully automate the merging without manual intervention?
-A: This tool is designed to be semi‑automatic because name unification often requires domain knowledge (same pronunciation does not always mean same person). If you prefer full automation, you could modify the code to always pick the most frequent name in each group, but that is not recommended.
+**Q: Can I fully automate the merging without manual intervention?**  
+A: This tool is designed to be **semi‑automatic** because name unification often requires domain knowledge (same pronunciation does not always mean same person). If you prefer full automation, you could modify the code to always pick the most frequent name in each group, but that is not recommended.
 
-Q: My dataset has hundreds of thousands of rows. Will it be slow?
+**Q: My dataset has hundreds of thousands of rows. Will it be slow?**  
 A: The algorithm groups names by their first character, so complexity is manageable. For tens of thousands of rows, it usually finishes within tens of seconds. If the dataset is extremely large, consider testing on a sample first.
 
-Q: Do I have to specify auxiliary columns?
+**Q: Do I have to specify auxiliary columns?**  
 A: No, they are optional. If you do not specify any, the tool will only show the name, frequency, and Pinyin – you will have to decide based on that alone.
 
-Q: I get `ModuleNotFoundError: No module named 'pypinyin'` – what now?
+**Q: I get `ModuleNotFoundError: No module named 'pypinyin'` – what now?**  
 A: Install the missing package: `pip install pypinyin`.
 
 **Q: How can I be sure the corrections are correct?**  
