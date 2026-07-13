@@ -1,0 +1,9 @@
+pandas
+numpy
+pypinyin
+streamlit
+openpyxl
+xlrd
+tabulate
+tqdm
+pytest

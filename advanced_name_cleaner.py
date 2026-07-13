@@ -17,6 +17,7 @@ import numpy as np
 from collections import defaultdict
 import warnings
 import difflib
+from itertools import combinations
 from pypinyin import lazy_pinyin, Style
 
 # 可选美化库
@@ -42,12 +43,12 @@ class AdvancedNameCleaner:
     Parameters
     ----------
     aux_columns : list, optional
-        辅助列名称列表，用于在决策时展示更多上下文信息（如w_name, year, post1, distname20等）
-    threshold : float, default=0.3
+        辅助列名称列表，用于在决策时展示更多上下文信息（如单位、年份等）
+    threshold : float, default=0.85
         拼音相似度阈值，高于此值视为疑似同音变体
     """
 
-    def __init__(self, aux_columns=None, threshold=0.3):
+    def __init__(self, aux_columns=None, threshold=0.85):
         self.aux_columns = aux_columns if aux_columns else []
         self.threshold = threshold
         self.name_info_cache = {}
@@ -72,7 +73,7 @@ class AdvancedNameCleaner:
             return 1.0
         return difflib.SequenceMatcher(None, py1, py2).ratio()
 
-    def find_potential_groups(self, df, name_col='p_name'):
+    def find_potential_groups(self, df, name_col='p_name', verbose=True):
         """
         基于拼音相似度聚类，返回候选分组列表
 
@@ -81,7 +82,11 @@ class AdvancedNameCleaner:
         list of list
             每个子列表是一组疑似同音的名字
         """
-        print(f"正在扫描 {len(df)} 条数据，构建拼音指纹...")
+        if name_col not in df.columns:
+            raise ValueError(f"数据集中未找到姓名列: {name_col}")
+
+        if verbose:
+            print(f"正在扫描 {len(df)} 条数据，构建拼音指纹...")
 
         unique_names = df[name_col].dropna().unique()
         surname_blocks = defaultdict(list)
@@ -94,7 +99,7 @@ class AdvancedNameCleaner:
         potential_groups = []
 
         iterator = surname_blocks.items()
-        if HAS_TQDM:
+        if HAS_TQDM and verbose:
             iterator = tqdm(iterator, desc="聚类分析中", unit="block")
 
         for surname, names in iterator:
@@ -137,6 +142,180 @@ class AdvancedNameCleaner:
         # 排序：优先处理成员多、名字长的复杂组
         potential_groups.sort(key=lambda x: (len(x), len(x[0])), reverse=True)
         return potential_groups
+
+    @staticmethod
+    def _to_python_value(value):
+        """将 pandas/numpy 标量转换成可序列化的 Python 值。"""
+        if pd.isna(value):
+            return None
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, (pd.Timestamp, pd.Timedelta)):
+            return str(value)
+        return value
+
+    @staticmethod
+    def _year_sort_key(value):
+        """按数值年份优先、文本年份其次的方式稳定排序。"""
+        if value is None:
+            return (2, "")
+        try:
+            return (0, float(value))
+        except (TypeError, ValueError):
+            return (1, str(value))
+
+    @staticmethod
+    def character_differences(reference, variant):
+        """返回两个姓名逐字差异，兼容长度不同的姓名。"""
+        reference = str(reference)
+        variant = str(variant)
+        differences = []
+        max_length = max(len(reference), len(variant))
+        for index in range(max_length):
+            reference_char = reference[index] if index < len(reference) else ""
+            variant_char = variant[index] if index < len(variant) else ""
+            if reference_char != variant_char:
+                differences.append({
+                    "position": index + 1,
+                    "reference": reference_char,
+                    "variant": variant_char,
+                })
+        return differences
+
+    def build_group_evidence(
+        self,
+        df,
+        name_group,
+        name_col='p_name',
+        year_col=None,
+        context_columns=None,
+    ):
+        """构建供 CLI、Web 等界面复用的结构化审阅证据。"""
+        if name_col not in df.columns:
+            raise ValueError(f"数据集中未找到姓名列: {name_col}")
+
+        names = [name for name in name_group if pd.notna(name)]
+        records = df[df[name_col].isin(names)].copy()
+        if records.empty:
+            raise ValueError("候选分组在数据集中没有对应记录")
+
+        context_columns = context_columns if context_columns is not None else self.aux_columns
+        context_columns = [
+            column for column in context_columns
+            if column in df.columns and column not in {name_col, year_col}
+        ]
+        valid_year_col = year_col if year_col in df.columns else None
+
+        counts = records[name_col].value_counts()
+        sorted_names = sorted(names, key=lambda name: (-int(counts.get(name, 0)), str(name)))
+        suggested_name = sorted_names[0]
+        total_frequency = int(counts.sum())
+
+        variants = []
+        for index, name in enumerate(sorted_names, start=1):
+            sub_df = records[records[name_col] == name]
+            frequency = int(len(sub_df))
+            years = []
+            year_counts = []
+            if valid_year_col:
+                raw_year_counts = sub_df[valid_year_col].dropna().value_counts()
+                year_counts = sorted(
+                    [
+                        {
+                            "year": self._to_python_value(year),
+                            "count": int(count),
+                        }
+                        for year, count in raw_year_counts.items()
+                    ],
+                    key=lambda row: self._year_sort_key(row["year"]),
+                )
+                years = [row["year"] for row in year_counts]
+
+            context_values = {}
+            for column in context_columns:
+                context_values[column] = [
+                    self._to_python_value(value)
+                    for value in sub_df[column].dropna().drop_duplicates().tolist()
+                ]
+
+            variants.append({
+                "id": index,
+                "name": self._to_python_value(name),
+                "frequency": frequency,
+                "frequency_ratio": frequency / total_frequency if total_frequency else 0,
+                "pinyin": self._get_pinyin_str(name),
+                "differences": self.character_differences(suggested_name, name),
+                "year_min": years[0] if years else None,
+                "year_max": years[-1] if years else None,
+                "year_counts": year_counts,
+                "context_values": context_values,
+                "is_suggested": name == suggested_name,
+            })
+
+        pairwise_similarities = [
+            {
+                "name_a": self._to_python_value(name_a),
+                "name_b": self._to_python_value(name_b),
+                "similarity": self.calculate_similarity(name_a, name_b),
+            }
+            for name_a, name_b in combinations(sorted_names, 2)
+        ]
+
+        timeline = []
+        if valid_year_col:
+            for (year, name), grouped in records.groupby(
+                [valid_year_col, name_col], dropna=False, sort=False
+            ):
+                row = {
+                    "year": self._to_python_value(year),
+                    "name": self._to_python_value(name),
+                    "frequency": int(len(grouped)),
+                }
+                for column in context_columns:
+                    values = [
+                        self._to_python_value(value)
+                        for value in grouped[column].dropna().drop_duplicates().tolist()
+                    ]
+                    row[column] = "；".join(str(value) for value in values) if values else ""
+                timeline.append(row)
+            timeline.sort(key=lambda row: (self._year_sort_key(row["year"]), str(row["name"])))
+
+        raw_columns = list(dict.fromkeys(
+            [name_col] + ([valid_year_col] if valid_year_col else []) + context_columns
+        ))
+        raw_records = [
+            {
+                column: self._to_python_value(value)
+                for column, value in row.items()
+            }
+            for row in records[raw_columns].to_dict(orient="records")
+        ]
+
+        return {
+            "names": [self._to_python_value(name) for name in sorted_names],
+            "total_frequency": total_frequency,
+            "suggested_name": self._to_python_value(suggested_name),
+            "variants": variants,
+            "pairwise_similarities": pairwise_similarities,
+            "timeline": timeline,
+            "raw_records": raw_records,
+            "name_column": name_col,
+            "year_column": valid_year_col,
+            "context_columns": context_columns,
+        }
+
+    @staticmethod
+    def apply_corrections(df, correction_map, name_col='p_name'):
+        """应用姓名映射，并保留首次清洗前的原始姓名列。"""
+        if name_col not in df.columns:
+            raise ValueError(f"数据集中未找到姓名列: {name_col}")
+
+        df_result = df.copy()
+        raw_col = f"{name_col}_raw"
+        if raw_col not in df_result.columns:
+            df_result[raw_col] = df_result[name_col]
+        df_result[name_col] = df_result[name_col].replace(correction_map)
+        return df_result
 
     def _display_group_context(self, df, name_col, name_group):
         """展示一个分组的上下文信息（频次、辅助列等）"""
@@ -275,12 +454,6 @@ class AdvancedNameCleaner:
         print("\n" + "=" * 80)
         print(f"正在应用 {len(correction_map)} 条修正...")
 
-        df_result = df.copy()
-        # 保留原始人名列
-        raw_col = f'{name_col}_raw'
-        if raw_col not in df_result.columns:
-            df_result[raw_col] = df_result[name_col]
-
-        df_result[name_col] = df_result[name_col].replace(correction_map)
+        df_result = self.apply_corrections(df, correction_map, name_col)
 
         return df_result, correction_map
